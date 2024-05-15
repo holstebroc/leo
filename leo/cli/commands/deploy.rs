@@ -15,9 +15,20 @@
 // along with the Leo library. If not, see <https://www.gnu.org/licenses/>.
 
 use super::*;
-use snarkos_cli::commands::{Deploy as SnarkOSDeploy, Developer};
-use snarkvm::cli::helpers::dotenv_private_key;
-use std::path::PathBuf;
+use aleo_std::StorageMode;
+use snarkvm::{
+    cli::helpers::dotenv_private_key,
+    ledger::query::Query as SnarkVMQuery,
+    package::Package as SnarkVMPackage,
+    prelude::{
+        deployment_cost,
+        store::{helpers::memory::ConsensusMemory, ConsensusStore},
+        PrivateKey,
+        ProgramOwner,
+        VM,
+    },
+};
+use std::{path::PathBuf, str::FromStr};
 
 /// Deploys an Aleo program.
 #[derive(Parser, Debug)]
@@ -58,11 +69,15 @@ impl Command for Deploy {
         let project_name = context.open_manifest()?.program_id().to_string();
 
         // Get the private key.
-        let mut private_key = self.fee_options.private_key;
-        if private_key.is_none() {
-            private_key =
-                Some(dotenv_private_key().map_err(CliError::failed_to_read_environment_private_key)?.to_string());
-        }
+        let private_key = match &self.fee_options.private_key {
+            Some(key) => PrivateKey::from_str(key)?,
+            None => PrivateKey::from_str(
+                &dotenv_private_key().map_err(CliError::failed_to_read_environment_private_key)?.to_string(),
+            )?,
+        };
+
+        // Specify the query
+        let query = SnarkVMQuery::from(&self.endpoint);
 
         let mut all_paths: Vec<(String, PathBuf)> = Vec::new();
 
@@ -79,35 +94,69 @@ impl Command for Deploy {
         all_paths.push((project_name, context.dir()?.join("build")));
 
         for (index, (name, path)) in all_paths.iter().enumerate() {
-            // Set the deploy arguments.
-            let mut deploy_args = vec![
-                "snarkos".to_string(),
-                "--private-key".to_string(),
-                private_key.as_ref().unwrap().clone(),
-                "--query".to_string(),
-                self.endpoint.clone(),
-                "--priority-fee".to_string(),
-                self.fee_options.priority_fee.to_string(),
-                "--path".to_string(),
-                path.to_str().unwrap().parse().unwrap(),
-                "--broadcast".to_string(),
-                format!("{}/{}/transaction/broadcast", self.endpoint, self.fee_options.network).to_string(),
-                name.clone(),
-            ];
+            // Fetch the package from the directory.
+            let package = SnarkVMPackage::<CurrentNetwork>::open(path)?;
 
-            // Use record as payment option if it is provided.
-            if let Some(record) = self.fee_options.record.clone() {
-                deploy_args.push("--record".to_string());
-                deploy_args.push(record);
+            println!("📦 Creating deployment transaction for '{}'...\n", &name.bold());
+
+            // Generate the deployment
+            let deployment = package.deploy::<CurrentAleo>(None)?;
+            let deployment_id = deployment.to_deployment_id()?;
+
+            // Generate the deployment transaction.
+            let transaction = {
+                // Initialize an RNG.
+                let rng = &mut rand::thread_rng();
+
+                let store =
+                    ConsensusStore::<CurrentNetwork, ConsensusMemory<CurrentNetwork>>::open(StorageMode::Production)?;
+
+                // Initialize the VM.
+                let vm = VM::from(store)?;
+
+                // Compute the minimum deployment cost.
+                let (minimum_deployment_cost, _) = deployment_cost(&deployment)?;
+
+                // Prepare the fees.
+                let fee = match &self.fee_options.record {
+                    Some(record) => {
+                        let fee_record = parse_record(&private_key, record)?;
+                        let fee_authorization = vm.authorize_fee_private(
+                            &private_key,
+                            fee_record,
+                            minimum_deployment_cost,
+                            self.fee_options.priority_fee,
+                            deployment_id,
+                            rng,
+                        )?;
+                        vm.execute_fee_authorization(fee_authorization, Some(query.clone()), rng)?
+                    }
+                    None => {
+                        let fee_authorization = vm.authorize_fee_public(
+                            &private_key,
+                            minimum_deployment_cost,
+                            self.fee_options.priority_fee,
+                            deployment_id,
+                            rng,
+                        )?;
+                        vm.execute_fee_authorization(fee_authorization, Some(query.clone()), rng)?
+                    }
+                };
+                // Construct the owner.
+                let owner = ProgramOwner::new(&private_key, deployment_id, rng)?;
+
+                // Create a new transaction.
+                Transaction::from_deployment(owner, deployment, fee)?
             };
+            println!("✅ Created deployment transaction for '{}'", name.bold());
 
-            let deploy = SnarkOSDeploy::try_parse_from(deploy_args).unwrap();
+            // Determine if the transaction should be broadcast, stored, or displayed to the user.
+            handle_broadcast(
+                &format!("{}/{}/transaction/broadcast", self.endpoint, self.fee_options.network),
+                transaction,
+                name,
+            )?;
 
-            // Deploy program.
-            Developer::Deploy(deploy).parse().map_err(CliError::failed_to_execute_deploy)?;
-
-            // Sleep for `wait_gap` seconds.
-            // This helps avoid parents from being serialized before children.
             if index < all_paths.len() - 1 {
                 std::thread::sleep(std::time::Duration::from_secs(self.wait));
             }

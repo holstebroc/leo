@@ -24,6 +24,11 @@ mod helpers;
 pub use helpers::*;
 
 pub(crate) type CurrentNetwork = snarkvm::prelude::MainnetV0;
+pub(crate) type CurrentAleo = snarkvm::circuit::AleoV0;
+
+// pub(crate) type CurrentNetwork = snarkvm::prelude::TestnetV0;
+// pub(crate) type CurrentAleo = snarkvm::circuit::AleoTestnetV0;
+
 pub(crate) const SNARKVM_COMMAND: &str = "snarkvm";
 
 #[cfg(test)]

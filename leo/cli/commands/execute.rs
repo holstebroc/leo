@@ -16,11 +16,7 @@
 
 use super::*;
 use clap::Parser;
-use snarkos_cli::commands::{Developer, Execute as SnarkOSExecute};
-use snarkvm::{
-    cli::{helpers::dotenv_private_key, Execute as SnarkVMExecute},
-    prelude::Parser as SnarkVMParser,
-};
+use snarkvm::{cli::Execute as SnarkVMExecute, prelude::Parser as SnarkVMParser};
 
 /// Build, Prove and Run Leo program with inputs
 #[derive(Parser, Debug)]
@@ -63,64 +59,64 @@ impl Command for Execute {
         // If the `broadcast` flag is set, then broadcast the transaction.
         if self.broadcast {
             // Get the program name.
-            let program_name = match (self.program, self.local) {
-                (Some(name), true) => {
-                    let local = context.open_manifest()?.program_id().to_string();
-                    // Throw error if local name doesn't match the specified name.
-                    if name == local {
-                        local
-                    } else {
-                        return Err(PackageError::conflicting_on_chain_program_name(local, name).into());
-                    }
-                }
-                (Some(name), false) => name,
-                (None, true) => context.open_manifest()?.program_id().to_string(),
-                (None, false) => return Err(PackageError::missing_on_chain_program_name().into()),
-            };
-
-            // Get the private key.
-            let private_key = match self.fee_options.private_key {
-                Some(private_key) => private_key,
-                None => dotenv_private_key().map_err(CliError::failed_to_read_environment_private_key)?.to_string(),
-            };
-
-            // Set deploy arguments.
-            let mut fee_args = vec![
-                "snarkos".to_string(),
-                "--private-key".to_string(),
-                private_key.clone(),
-                "--query".to_string(),
-                self.compiler_options.endpoint.clone(),
-                "--priority-fee".to_string(),
-                self.fee_options.priority_fee.to_string(),
-                "--broadcast".to_string(),
-                format!("{}/{}/transaction/broadcast", self.compiler_options.endpoint, self.fee_options.network)
-                    .to_string(),
-            ];
-
-            // Use record as payment option if it is provided.
-            if let Some(record) = self.fee_options.record.clone() {
-                fee_args.push("--record".to_string());
-                fee_args.push(record);
-            };
-
-            // Execute program.
-            Developer::Execute(
-                SnarkOSExecute::try_parse_from(
-                    [
-                        // The arguments for determining fee.
-                        fee_args,
-                        // The program ID and function name.
-                        vec![program_name, self.name],
-                        // The function inputs.
-                        self.inputs,
-                    ]
-                    .concat(),
-                )
-                .unwrap(),
-            )
-            .parse()
-            .map_err(CliError::failed_to_execute_deploy)?;
+            // let program_name = match (self.program, self.local) {
+            //     (Some(name), true) => {
+            //         let local = context.open_manifest()?.program_id().to_string();
+            //         // Throw error if local name doesn't match the specified name.
+            //         if name == local {
+            //             local
+            //         } else {
+            //             return Err(PackageError::conflicting_on_chain_program_name(local, name).into());
+            //         }
+            //     }
+            //     (Some(name), false) => name,
+            //     (None, true) => context.open_manifest()?.program_id().to_string(),
+            //     (None, false) => return Err(PackageError::missing_on_chain_program_name().into()),
+            // };
+            //
+            // // Get the private key.
+            // let private_key = match self.fee_options.private_key {
+            //     Some(private_key) => private_key,
+            //     None => dotenv_private_key().map_err(CliError::failed_to_read_environment_private_key)?.to_string(),
+            // };
+            //
+            // // Set deploy arguments.
+            // let mut fee_args = vec![
+            //     "snarkos".to_string(),
+            //     "--private-key".to_string(),
+            //     private_key.clone(),
+            //     "--query".to_string(),
+            //     self.compiler_options.endpoint.clone(),
+            //     "--priority-fee".to_string(),
+            //     self.fee_options.priority_fee.to_string(),
+            //     "--broadcast".to_string(),
+            //     format!("{}/{}/transaction/broadcast", self.compiler_options.endpoint, self.fee_options.network)
+            //         .to_string(),
+            // ];
+            //
+            // // Use record as payment option if it is provided.
+            // if let Some(record) = self.fee_options.record.clone() {
+            //     fee_args.push("--record".to_string());
+            //     fee_args.push(record);
+            // };
+            //
+            // // Execute program.
+            // Developer::Execute(
+            //     SnarkOSExecute::try_parse_from(
+            //         [
+            //             // The arguments for determining fee.
+            //             fee_args,
+            //             // The program ID and function name.
+            //             vec![program_name, self.name],
+            //             // The function inputs.
+            //             self.inputs,
+            //         ]
+            //         .concat(),
+            //     )
+            //     .unwrap(),
+            // )
+            // .parse()
+            // .map_err(CliError::failed_to_execute_deploy)?;
 
             return Ok(());
         }
