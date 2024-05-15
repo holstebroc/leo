@@ -65,8 +65,6 @@ use std::str::FromStr;
 use tracing::span::Span;
 
 use snarkvm::console::network::Network;
-use snarkvm::prelude::ToBytes;
-
 
 /// Base trait for the Leo CLI, see methods and their documentation for details.
 pub trait Command {
@@ -215,15 +213,6 @@ fn handle_broadcast<N: Network>(endpoint: &String, transaction: Transaction<N>, 
     println!("Broadcasting transaction to {}...", endpoint.clone());
     // Get the transaction id.
     let transaction_id = transaction.id();
-    
-    // TODO: remove
-    println!("Transaction {:?}", transaction); 
-    let tx_bytes = transaction.to_bytes_le()?;
-    println!("Transaction bytes: {:?}", tx_bytes);
-    let tx_json = serde_json::to_string(&transaction).unwrap();
-    println!("Transaction JSON: {:?}", tx_json);
-    let deserialize_tx_json = serde_json::from_str::<Transaction<N>>(&tx_json).unwrap();
-    println!("Deserialized transaction: {:?}", deserialize_tx_json);
 
     // Send the deployment request to the local development node.
     return match ureq::post(endpoint).send_json(&transaction) {
