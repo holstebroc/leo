@@ -16,9 +16,8 @@
 
 use leo_ast::{Expression, ExpressionReconstructor, Identifier, ProgramReconstructor, StatementReconstructor};
 
-/// A `Replacer` applies `replacer` to all `Identifier`s in an AST.
-/// `Replacer`s are used to rename identifiers.
-/// `Replacer`s are used to interpolate function arguments.
+/// `Replacer` applies replacements to identifiers in an AST.
+/// It can be used to rename identifiers or interpolate function arguments.
 pub struct Replacer<F>
 where
     F: Fn(&Identifier) -> Expression,
@@ -30,6 +29,7 @@ impl<F> Replacer<F>
 where
     F: Fn(&Identifier) -> Expression,
 {
+    /// Constructs a new `Replacer` with the provided replacement function.
     pub fn new(replace: F) -> Self {
         Self { replace }
     }
@@ -41,11 +41,18 @@ where
 {
     type AdditionalOutput = ();
 
+    /// Reconstructs an identifier by applying the replacement function.
     fn reconstruct_identifier(&mut self, input: Identifier) -> (Expression, Self::AdditionalOutput) {
         ((self.replace)(&input), Default::default())
     }
 }
 
-impl<F> StatementReconstructor for Replacer<F> where F: Fn(&Identifier) -> Expression {}
+impl<F> StatementReconstructor for Replacer<F>
+where
+    F: Fn(&Identifier) -> Expression,
+{}
 
-impl<F> ProgramReconstructor for Replacer<F> where F: Fn(&Identifier) -> Expression {}
+impl<F> ProgramReconstructor for Replacer<F>
+where
+    F: Fn(&Identifier) -> Expression,
+{}
